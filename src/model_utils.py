@@ -1,3 +1,4 @@
+# ViT-Base loading and hook registration
 import torch
 from transformers import ViTForImageClassification, ViTImageProcessor
 from datasets import load_dataset

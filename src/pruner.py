@@ -1,4 +1,6 @@
-# WandaPruner class and hooks
+# WandaPruner class and hooks 
+# Core logic for hybrid pruning architecture that preserves sensitive Attention mechanisms while compressing MLP blocks
+# using Wanda metric and 2:4 structured sparsity constraint
 import torch
 import torch.nn as nn
 
@@ -73,6 +75,25 @@ class WandaPruner:
         with torch.no_grad():
             for name, module in self.model.named_modules():
                 if isinstance(module, nn.Linear):
+                    # SKIP SENSITIVE LAYERS and Attention Layers
+                    # 1. Classifier Head (already skipped)
+                    # 2. Pooler (Dense layer before classifier)
+                    # 3. Embeddings (if implemented as Linear)
+                    # 4. Attention Layers (Q, K, V projections) (Hybrid 2:4 Strategy)
+                    
+                    if any(keyword in name for keyword in ["classifier", "head", "pooler", "embeddings", "attention"]):
+                        print(f"Skipping {name} (Sensitive Layer) to preserve accuracy.")
+                        continue
+                        
+                    # EXPERIMENT: "Surgical" Attention Pruning Approach (pruning the Attention Output layer(less sensitive) while keeping Q/K/V(very sensitive) dense).
+                    # if any(keyword in name for keyword in ["classifier", "head", "pooler", "embeddings", "query", "key", "value"]):
+                    #    print(f"Skipping {name} (Sensitive Layer) to preserve accuracy.")
+                    #    continue
+
+                    # This EXPERIMENT ("surgical Attention Pruning") yielded worse results(opposite of expected)
+                    # Post-Pruning Accuracy: 69.53%, Accuracy Drop: 13.28% 
+                    # Lession: All Attention Components are very sensitive to pruning.
+
                     if name not in self.activations:
                         print(f"Skipping {name}, no activation data found.")
                         continue
