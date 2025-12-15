@@ -1,3 +1,4 @@
+# Script to measure accuracy drop vs sparsity
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -8,7 +9,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '../src'))
 
 from model_utils import get_model
-from data_loader import get_calibration_data
+from data_loader import get_calibration_data, get_validation_data
 from pruner import WandaPruner
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -67,14 +68,30 @@ def main():
     model, processor = get_model()
     model.to(device)
 
+    # --- NEW: Baseline Accuracy Check ---
+    print("\n------------------------------------------------")
+    print("📊 BASELINE CHECK")
+    print("------------------------------------------------")
+    try:
+        val_images, val_labels = get_validation_data(processor, dataset_name="imagenet-1k", n_samples=128)
+        val_dataset = TensorDataset(val_images, val_labels)
+        val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+        
+        print(f"Evaluating baseline accuracy on {len(val_labels)} validation samples...")
+        baseline_accuracy = evaluate(model, val_loader, device)
+        print(f"Baseline Accuracy: {baseline_accuracy:.2f}%")
+    except Exception as e:
+        print(f"Skipping baseline check due to error: {e}")
+        baseline_accuracy = None
+
     # Check Baseline Sparsity
-    print("Baseline Sparsity:")
+    print("\nBaseline Sparsity:")
     check_sparsity(model)
 
     # Prepare Calibration Data
-    print("Fetching calibration data...")
-    # Using imagenet-1k as requested, but small sample for speed in this test run
-    calib_images = get_calibration_data(processor, dataset_name="imagenet-1k", n_samples=32) 
+    print("\nFetching calibration data...")
+    # Increased to 128 as per Wanda recommendation
+    calib_images = get_calibration_data(processor, dataset_name="imagenet-1k", n_samples=128) 
     calib_dataset = TensorDataset(calib_images)
     calib_loader = DataLoader(calib_dataset, batch_size=8, shuffle=False)
 
@@ -108,6 +125,52 @@ def main():
                 else:
                     print("2:4 pattern FAILED for this group.")
             break
+
+    # --- NEW: Accuracy Verification ---
+    print("\n------------------------------------------------")
+    print("🏥 SANITY CHECK: Is the model still smart?")
+    print("------------------------------------------------")
+
+    try:
+        # 1. Load a small validation set
+        val_images, val_labels = get_validation_data(processor, dataset_name="imagenet-1k", n_samples=128)
+        
+        # Create valid dataloader
+        val_dataset = TensorDataset(val_images, val_labels)
+        val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+        
+        # 2. Evaluate Accuracy
+        print(f"Evaluating post-pruning accuracy on {len(val_labels)} validation samples...")
+        accuracy = evaluate(model, val_loader, device)
+        print(f"Post-Pruning Accuracy: {accuracy:.2f}%")
+        
+        if baseline_accuracy is not None:
+            drop = baseline_accuracy - accuracy
+            print(f"Accuracy Drop: {drop:.2f}%")
+            if drop < 1.0:
+                print("✅ SUCCESS: Accuracy drop is within 1% tolerance.")
+            else:
+                print("⚠️ WARNING: Accuracy drop is larger than 1%.")
+        
+        # 3. Confidence Check (Qualitative)
+        print("\nChecking confidence on first 5 samples...")
+        model.eval()
+        with torch.no_grad():
+            inputs = val_images[:5].to(device)
+            outputs = model(inputs)
+            probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+            top_probs, top_indices = torch.max(probs, dim=-1)
+            
+            print(f"Top Confidence Scores: {top_probs.cpu().numpy()}")
+            
+            if (top_probs > 0.5).all():
+                 print("✅ PASS: Model is confident in its predictions.")
+            else:
+                 print("⚠️ WARNING: Model confidence is low. Pruning might have been too aggressive.")
+                 
+    except Exception as e:
+        print(f"Skipping accuracy check due to error: {e}")
+        print("Ensure you have access to the validation split of the dataset.")
 
 if __name__ == "__main__":
     main()
