@@ -98,6 +98,57 @@ def get_validation_data(processor, dataset_name="imagenet-1k", n_samples=128):
     
     return images, labels
 
+
+def get_train_val_data(processor, dataset_name="imagenet-1k", n_train=1000, n_val=128):
+    """
+    Creates Hugging Face datasets for training and validation.
+    Returns datasets with proper format for HF Trainer.
+    """
+    from datasets import Dataset
+    
+    print(f"Preparing train ({n_train}) and val ({n_val}) datasets from {dataset_name}...")
+    
+    def load_split_as_hf_dataset(split, n_samples):
+        """Helper to load a split as HF Dataset with proper format."""
+        if dataset_name == "imagenet-1k":
+            stream = load_dataset("ILSVRC/imagenet-1k", split=split, streaming=True)
+        else:
+            stream = load_dataset(dataset_name, split=split, streaming=True)
+        
+        pixel_values_list = []
+        labels_list = []
+        
+        for i, sample in enumerate(stream):
+            if i >= n_samples:
+                break
+                
+            image = sample['image']
+            label = sample['label']
+            
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            
+            # Process image
+            inputs = processor(images=image, return_tensors="pt")
+            pixel_values_list.append(inputs['pixel_values'].squeeze(0))
+            labels_list.append(label)
+        
+        # Stack into tensors
+        pixel_values = torch.stack(pixel_values_list)
+        labels = torch.tensor(labels_list)
+        
+        # Create HF Dataset
+        return Dataset.from_dict({
+            "pixel_values": pixel_values,
+            "labels": labels
+        })
+    
+    train_ds = load_split_as_hf_dataset("train", n_train)
+    val_ds = load_split_as_hf_dataset("validation", n_val)
+    
+    print(f"Train: {len(train_ds)} samples, Val: {len(val_ds)} samples")
+    return train_ds, val_ds
+
 if __name__ == "__main__":
     import sys
     # Test the loader
