@@ -83,12 +83,13 @@ def main():
     base_model = ViTForImageClassification.from_pretrained(base_model_name).to(device)
     processor = ViTImageProcessor.from_pretrained(base_model_name)
     
-    # Load validation data
-    print("Loading validation data...")
-    val_images, val_labels = get_validation_data(processor, dataset_name="imagenet-1k", n_samples=128)
+    # INCREASE validation sample size to 1024 for statistical significance
+    print("Loading validation data (n=1024)...")
+    val_images, val_labels = get_validation_data(processor, dataset_name="imagenet-1k", n_samples=2048)
     val_dataset = TensorDataset(val_images, val_labels)
+    # Batch size 32 is fine for M1/M2 inference
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-    
+
     print(f"Evaluating baseline on {len(val_labels)} samples...")
     baseline_accuracy = evaluate(base_model, val_loader, device)
     print(f"Baseline Accuracy: {baseline_accuracy:.2f}%")
