@@ -8,3 +8,5 @@ numpy
 matplotlib
 tqdm
 jupyter
+gradio>=4.19.2
+peft
