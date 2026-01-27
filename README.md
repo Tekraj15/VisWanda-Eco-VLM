@@ -91,8 +91,13 @@ The performance gap is calculated as:
 > Accuracy_drop = {Accuracy of Dense ViT Model} - {Accuracy of Pruned+LoRA ViT Model}
 
 We categorize the results as follows:
+
 ✅ Success: Accuracy_drop < 1.0% (Negligible loss)
-⚠️ Warning: Accuracy_drop < 5.0% (Noticeable but usable)
+
+⚠️☑️ Good: Accuracy_drop < 3% (Noticeable but usable)
+
+⚠️ Warning: Accuracy_drop between 3 to 5% (Alarming)
+
 ❌ Failure: Accuracy_drop >= 5.0% (Significant degradation)
 
 
