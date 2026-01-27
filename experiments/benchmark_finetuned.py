@@ -74,6 +74,11 @@ def main():
     
     model_path = "./checkpoints/viswanda_final_model"
     base_model_name = "google/vit-base-patch16-224"
+    device = get_device()
+
+    #paths
+    pruned_base_path = "./checkpoints/viswanda_pruned_base"
+    adapter_path = "./checkpoints/viswanda_final_model"
     
     # 1. BASELINE EVALUATION
     print("\n" + "="*50)
@@ -84,8 +89,8 @@ def main():
     processor = ViTImageProcessor.from_pretrained(base_model_name)
     
     # INCREASE validation sample size to 1024 for statistical significance
-    print("Loading validation data (n=1024)...")
-    val_images, val_labels = get_validation_data(processor, dataset_name="imagenet-1k", n_samples=2048)
+    print("Loading validation data (n=5000)...")
+    val_images, val_labels = get_validation_data(processor, dataset_name="imagenet-1k", n_samples=5000)
     val_dataset = TensorDataset(val_images, val_labels)
     # Batch size 32 is fine for M1/M2 inference
     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
@@ -104,24 +109,26 @@ def main():
     print("FINETUNED (Pruned + LoRA Merged)")
     print("="*50)
     
-    # Load the fine-tuned model (now saved as merged full model)
-    print(f"Loading fine-tuned model from {model_path}...")
+    # 1. Load the PRUNED BASE model
+    print(f"Loading Sparse Base from {pruned_base_path}...")
+    base_model = ViTForImageClassification.from_pretrained(pruned_base_path)
     
-    # Load as full model (LoRA merged into pruned base)
-    finetuned_model = ViTForImageClassification.from_pretrained(model_path)
-    print("✅ Loaded merged model (pruned + LoRA)")
+    # 2. Load the LoRA Adapters
+    print(f"Loading LoRA Adapters from {adapter_path}...")
+    finetuned_model = PeftModel.from_pretrained(base_model, adapter_path)
     
     finetuned_model.to(device)
     finetuned_model.eval()
     
-    # Check sparsity
-    sparsity = check_sparsity(finetuned_model)
-    print(f"Model Sparsity: {sparsity:.2f}%")
+    # Check Sparsity of the BASE MODEL (The underlying weights)
+    # We verify that the base weights are still 2:4 sparse
+    sparsity = check_sparsity(finetuned_model) 
+    print(f"Base Model Sparsity: {sparsity:.2f}% (Adapters are separate)")
     
     # Evaluate
-    print(f"Evaluating fine-tuned model on {len(val_labels)} samples...")
+    # PyTorch handles the math: y = (W_sparse @ x) + (B @ A @ x)
+    print(f"Evaluating Recovered model on {len(val_labels)} samples...")
     finetuned_accuracy = evaluate(finetuned_model, val_loader, device)
-    print(f"Fine-tuned Accuracy: {finetuned_accuracy:.2f}%")
     
     # 3. COMPARISON
     print("\n" + "="*50)
@@ -138,9 +145,9 @@ def main():
     print(f"└────────────────────────────────────────────┘")
     
     if drop < 1.0:
-        print("🎉 SUCCESS: Accuracy drop is within 1% tolerance!")
+        print(" ✅ SUCCESS: Accuracy drop is within 1% tolerance!")
     elif drop < 2.0:
-        print("✓ GOOD: Accuracy drop is within 2%.")
+        print("☑️ GOOD: Accuracy drop is within 2%.")
     elif drop < 5.0:
         print("⚠️ WARNING: Accuracy drop is between 2-5%.")
     else:
