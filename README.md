@@ -94,7 +94,7 @@ We categorize the results as follows:
 
 ✅ Success: Accuracy_drop < 1.0% (Negligible loss)
 
-⚠️☑️ Good: Accuracy_drop < 3% (Noticeable but usable)
+☑️ Good: Accuracy_drop < 3% (Noticeable but usable)
 
 ⚠️ Warning: Accuracy_drop between 3 to 5% (Alarming)
 
